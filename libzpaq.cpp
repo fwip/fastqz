@@ -20,7 +20,9 @@ conforming to the ZPAQ level 2 standard. See http://mattmahoney.net/zpaq/
 #include <math.h>
 
 #ifndef NOJIT
-#ifdef unix
+#ifdef linux
+#include <sys/mman.h>
+#elif __APPLE__
 #include <sys/mman.h>
 #else
 #include <windows.h>
@@ -70,17 +72,24 @@ void allocx(U8* &p, int &n, int newsize) {
   n=0;
 #else
   if (p || n) {
-    if (p)
-#ifdef unix
+    if (p) {
+#ifdef linux
+      munmap(p, n);
+#elif __APPLE__
       munmap(p, n);
 #else // Windows
       VirtualFree(p, 0, MEM_RELEASE);
 #endif
+    }
     p=0;
     n=0;
   }
   if (newsize>0) {
-#ifdef unix
+#ifdef linux
+    p=(U8*)mmap(0, newsize, PROT_READ|PROT_WRITE|PROT_EXEC,
+                MAP_PRIVATE|MAP_ANON, -1, 0);
+    if ((void*)p==MAP_FAILED) p=0;
+#elif __APPLE__
     p=(U8*)mmap(0, newsize, PROT_READ|PROT_WRITE|PROT_EXEC,
                 MAP_PRIVATE|MAP_ANON, -1, 0);
     if ((void*)p==MAP_FAILED) p=0;
@@ -1839,7 +1848,9 @@ int ZPAQL::assemble() {
     put5(0x48897424,8);       // mov [rsp+8], rsi
     put5(0x48895424,16);      // mov [rsp+16], rdx
     put5(0x48894c24,24);      // mov [rsp+24], rcx
-#ifdef unix
+#ifdef linux
+    put2l(0x48bf, this);      // mov rdi, this
+#elif __APPLE__
     put2l(0x48bf, this);      // mov rdi, this
 #else  // Windows
     put2l(0x48b9, this);      // mov rcx, this
@@ -2380,7 +2391,9 @@ int Predictor::assemble_p() {
   if (S==4)
     put4(0x8b7c2414);         // mov edi,[esp+0x14] ; pr
   else {
-#ifndef unix
+#ifdef linux
+#elif __APPLE__
+#else
     put3(0x4889cf);           // mov rdi, rcx (1st arg in Win64)
 #endif
   }
@@ -2770,7 +2783,9 @@ int Predictor::assemble_p() {
     put4(0x8b6c2418);          // mov ebp,[esp+0x18] ; (2nd arg = y)
   }
   else {
-#ifdef unix                    // (1st arg already in rdi)
+#ifdef linux                   // (1st arg already in rdi)
+    put3(0x4889f5);            // mov rbp, rsi (2nd arg in Linux-64)
+#elif __APPLE__
     put3(0x4889f5);            // mov rbp, rsi (2nd arg in Linux-64)
 #else
     put3(0x4889cf);            // mov rdi, rcx (1st arg in Win64)
